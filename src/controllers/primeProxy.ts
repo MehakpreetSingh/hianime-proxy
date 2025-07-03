@@ -98,7 +98,7 @@ export const primeProxy = async (req: Request, res: Response) => {
         'Sec-Fetch-Dest': 'video',
         'Sec-Fetch-Mode': 'cors',
         'Sec-Fetch-Site': 'cross-site',
-        'Referer': 'https://xprime.tv',
+        'Referer': 'https://xprime.tv/',
         'Origin': 'https://xprime.tv',
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
       };
@@ -107,7 +107,7 @@ export const primeProxy = async (req: Request, res: Response) => {
         requestHeaders['Range'] = req.headers.range;
       }
 
-      const response = await axios.get("https://sudoproxy.kubuuus.pl/?destination="+targetUrl, {
+      const response = await axios.get(targetUrl, {
         responseType: 'stream',
         headers: requestHeaders,
         maxRedirects: 5,
