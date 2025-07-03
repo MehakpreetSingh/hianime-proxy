@@ -23,7 +23,10 @@ export function decodePayload(token: string): { url: string; ismp4?: boolean } {
   return JSON.parse(decrypted);
 }
 
+// Function to rewrite URLs in M3U8 content using AES encoding
 function rewriteM3U8Content(content: string, baseUrl: string, proxyBaseUrl: string) {
+  console.log("Prime Proxy: Rewriting M3U8 content with base URL:", baseUrl);
+  console.log("Prime Proxy: Using proxy base URL:", proxyBaseUrl);
   const lines = content.split('\n');
   const rewrittenLines = lines.map(line => {
     // Handle URI in EXT-X-KEY
@@ -38,7 +41,7 @@ function rewriteM3U8Content(content: string, baseUrl: string, proxyBaseUrl: stri
           }
         }
         const encoded = encodePayload({ url: fullUrl });
-        return `URI="${proxyBaseUrl}/prime-proxy?url=${encodeURIComponent(encoded)}"`;
+        return `URI="/prime-proxy?url=${encodeURIComponent(encoded)}"`;
       });
     }
 
@@ -46,14 +49,14 @@ function rewriteM3U8Content(content: string, baseUrl: string, proxyBaseUrl: stri
     if (line.startsWith('/') && !line.startsWith('#')) {
       const fullUrl = baseUrl + line;
       const encoded = encodePayload({ url: fullUrl });
-      return `${proxyBaseUrl}/prime-proxy?url=${encodeURIComponent(encoded)}`;
+      return `/prime-proxy?url=${encodeURIComponent(encoded)}`;
     } else if (line.startsWith('http') && !line.startsWith('#')) {
       const encoded = encodePayload({ url: line });
-      return `${proxyBaseUrl}/prime-proxy?url=${encodeURIComponent(encoded)}`;
+      return `/prime-proxy?url=${encodeURIComponent(encoded)}`;
     } else if (!line.startsWith('#') && !line.startsWith('http') && line.trim() !== '') {
       const fullUrl = baseUrl + '/' + line;
       const encoded = encodePayload({ url: fullUrl });
-      return `${proxyBaseUrl}/prime-proxy?url=${encodeURIComponent(encoded)}`;
+      return `/prime-proxy?url=${encodeURIComponent(encoded)}`;
     }
 
     return line;
@@ -64,7 +67,16 @@ function rewriteM3U8Content(content: string, baseUrl: string, proxyBaseUrl: stri
 
 // Main proxy controller
 export const primeProxy = async (req: Request, res: Response) => {
-  // ...existing code...
+  // Set CORS headers immediately
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Referer, User-Agent, Range');
+  res.header('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range, Content-Type');
+
+  // Handle preflight OPTIONS request
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
   try {
     const encodedToken = req.query.url as string;
@@ -105,12 +117,15 @@ export const primeProxy = async (req: Request, res: Response) => {
         responseType: 'stream',
         headers: requestHeaders,
         maxRedirects: 5,
-        timeout: 30000
+        timeout: 30000, // Increased timeout
+        validateStatus: status => status < 400
       });
 
       const streamingHeaders: any = {
         'Content-Type': 'video/mp4',
         'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range, Content-Type',
         'X-Content-Type-Options': 'nosniff'
       };
 
@@ -155,15 +170,22 @@ export const primeProxy = async (req: Request, res: Response) => {
 
     const response = await axios.get(targetUrl, {
       headers: headers,
-      responseType: 'text',
-      timeout: 30000,
+      responseType: 'arraybuffer',
+      timeout: 30000, // Increased timeout
       maxRedirects: 5
     });
 
     const contentType = response.headers['content-type'] || '';
     
+    // Set CORS headers again after the response
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Referer, User-Agent, Range');
+    res.header('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range, Content-Type');
+    
     res.set({
       'Content-Type': contentType,
+      'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache',
       'Expires': '0'
@@ -173,18 +195,13 @@ export const primeProxy = async (req: Request, res: Response) => {
       contentType.includes('application/vnd.apple.mpegurl') ||
       contentType.includes('application/x-mpegURL') ||
       targetUrl.includes('.m3u8') ||
-      response.data.includes('#EXTM3U')
+      response.data.toString().includes('#EXTM3U')
     ) {
-      const content = response.data;
+      const content = response.data.toString();
       const baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf('/'));
-      
-      // Force HTTPS for proxy base URL
-      const protocol = req.get('x-forwarded-proto') || req.protocol;
-      const host = req.get('x-forwarded-host') || req.get('host');
-      const proxyBaseUrl = `https://${host}`;
-      
-      console.log("Prime Proxy: Using proxy base URL:", proxyBaseUrl);
+      const proxyBaseUrl = `${req.protocol}://${req.get('host')}`;
 
+      // All links in the playlist are now AES-encrypted
       const rewrittenContent = rewriteM3U8Content(content, baseUrl, proxyBaseUrl);
       console.log("Prime Proxy: Successfully processed M3U8 content");
       res.send(rewrittenContent);
@@ -202,19 +219,7 @@ export const primeProxy = async (req: Request, res: Response) => {
     });
 
     // Set CORS headers even on error
-    const origin = req.headers.origin;
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'https://cinemaos.live',
-      'https://cinemaos-v3.vercel.app'
-    ];
-
-    if (origin && allowedOrigins.includes(origin)) {
-      res.header('Access-Control-Allow-Origin', origin);
-    } else {
-      res.header('Access-Control-Allow-Origin', '*');
-    }
-
+    res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Referer, User-Agent, Range');
     res.header('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range, Content-Type');
