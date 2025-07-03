@@ -23,7 +23,6 @@ export function decodePayload(token: string): { url: string; ismp4?: boolean } {
   return JSON.parse(decrypted);
 }
 
-// Function to rewrite URLs in M3U8 content using AES encoding
 function rewriteM3U8Content(content: string, baseUrl: string, proxyBaseUrl: string) {
   const lines = content.split('\n');
   const rewrittenLines = lines.map(line => {
@@ -65,28 +64,7 @@ function rewriteM3U8Content(content: string, baseUrl: string, proxyBaseUrl: stri
 
 // Main proxy controller
 export const primeProxy = async (req: Request, res: Response) => {
-  // CORS allow list
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'https://cinemaos.live',
-    'https://cinemaos-v3.vercel.app'
-  ];
-
-  const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  } else {
-    res.header('Access-Control-Allow-Origin', '*');
-  }
-
-  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Referer, User-Agent, Range');
-  res.header('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range, Content-Type');
-
-  // Handle preflight OPTIONS request
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  // ...existing code...
 
   try {
     const encodedToken = req.query.url as string;
@@ -127,6 +105,7 @@ export const primeProxy = async (req: Request, res: Response) => {
         responseType: 'stream',
         headers: requestHeaders,
         maxRedirects: 5,
+        timeout: 30000
       });
 
       const streamingHeaders: any = {
@@ -178,6 +157,7 @@ export const primeProxy = async (req: Request, res: Response) => {
       headers: headers,
       responseType: 'text',
       timeout: 30000,
+      maxRedirects: 5
     });
 
     const contentType = response.headers['content-type'] || '';
@@ -197,7 +177,13 @@ export const primeProxy = async (req: Request, res: Response) => {
     ) {
       const content = response.data;
       const baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf('/'));
-      const proxyBaseUrl = `${req.protocol}://${req.get('host')}`;
+      
+      // Force HTTPS for proxy base URL
+      const protocol = req.get('x-forwarded-proto') || req.protocol;
+      const host = req.get('x-forwarded-host') || req.get('host');
+      const proxyBaseUrl = `https://${host}`;
+      
+      console.log("Prime Proxy: Using proxy base URL:", proxyBaseUrl);
 
       const rewrittenContent = rewriteM3U8Content(content, baseUrl, proxyBaseUrl);
       console.log("Prime Proxy: Successfully processed M3U8 content");
