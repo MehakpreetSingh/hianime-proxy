@@ -65,8 +65,20 @@ function rewriteM3U8Content(content: string, baseUrl: string, proxyBaseUrl: stri
 
 // Main proxy controller
 export const primeProxy = async (req: Request, res: Response) => {
-  // Set CORS headers immediately
-  res.header('Access-Control-Allow-Origin', '*');
+  // CORS allow list
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'https://cinemaos.live',
+    'https://cinemaos-v3.vercel.app'
+  ];
+
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else {
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Referer, User-Agent, Range');
   res.header('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range, Content-Type');
@@ -114,60 +126,14 @@ export const primeProxy = async (req: Request, res: Response) => {
       const response = await axios.get(targetUrl, {
         responseType: 'stream',
         headers: requestHeaders,
-        maxRedirects: 0, // Handle redirects manually
+        maxRedirects: 5,
         timeout: 30000,
-        validateStatus: status => status < 400 || status === 301 || status === 302
+        validateStatus: status => status < 400
       });
-
-      // Handle redirects manually
-      if (response.status === 301 || response.status === 302) {
-        const redirectUrl = response.headers.location;
-        if (redirectUrl) {
-          console.log("Prime Proxy: Following redirect to:", redirectUrl);
-          const redirectResponse = await axios.get(redirectUrl, {
-            responseType: 'stream',
-            headers: requestHeaders,
-            maxRedirects: 0,
-            timeout: 30000,
-            validateStatus: status => status < 400
-          });
-
-          const streamingHeaders: any = {
-            'Content-Type': 'video/mp4',
-            'Accept-Ranges': 'bytes',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range, Content-Type',
-            'X-Content-Type-Options': 'nosniff'
-          };
-
-          if (redirectResponse.headers['content-length']) {
-            streamingHeaders['Content-Length'] = redirectResponse.headers['content-length'];
-          }
-          if (redirectResponse.headers['content-range']) {
-            streamingHeaders['Content-Range'] = redirectResponse.headers['content-range'];
-          }
-          if (redirectResponse.headers['etag']) {
-            streamingHeaders['ETag'] = redirectResponse.headers['etag'];
-          }
-          if (redirectResponse.headers['cache-control']) {
-            streamingHeaders['Cache-Control'] = redirectResponse.headers['cache-control'];
-          } else {
-            streamingHeaders['Cache-Control'] = 'public, max-age=3600';
-          }
-
-          res.status(redirectResponse.status);
-          res.set(streamingHeaders);
-
-          redirectResponse.data.pipe(res);
-          return;
-        }
-      }
 
       const streamingHeaders: any = {
         'Content-Type': 'video/mp4',
         'Accept-Ranges': 'bytes',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range, Content-Type',
         'X-Content-Type-Options': 'nosniff'
       };
 
@@ -212,60 +178,16 @@ export const primeProxy = async (req: Request, res: Response) => {
 
     const response = await axios.get(targetUrl, {
       headers: headers,
-      responseType: 'text', // Changed from arraybuffer to text
+      responseType: 'text',
       timeout: 30000,
-      maxRedirects: 0, // Handle redirects manually
-      validateStatus: status => status < 400 || status === 301 || status === 302
+      maxRedirects: 5,
+      validateStatus: status => status < 400
     });
-
-    // Handle redirects manually for M3U8 too
-    if (response.status === 301 || response.status === 302) {
-      const redirectUrl = response.headers.location;
-      if (redirectUrl) {
-        console.log("Prime Proxy: Following M3U8 redirect to:", redirectUrl);
-        const redirectResponse = await axios.get(redirectUrl, {
-          headers: headers,
-          responseType: 'text',
-          timeout: 30000,
-          maxRedirects: 0,
-          validateStatus: status => status < 400
-        });
-
-        const contentType = redirectResponse.headers['content-type'] || 'application/vnd.apple.mpegurl';
-        
-        res.set({
-          'Content-Type': contentType,
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        });
-
-        if (
-          contentType.includes('application/vnd.apple.mpegurl') ||
-          contentType.includes('application/x-mpegURL') ||
-          redirectUrl.includes('.m3u8') ||
-          redirectResponse.data.includes('#EXTM3U')
-        ) {
-          const content = redirectResponse.data;
-          const baseUrl = redirectUrl.substring(0, redirectUrl.lastIndexOf('/'));
-          const proxyBaseUrl = `${req.protocol}://${req.get('host')}`;
-
-          const rewrittenContent = rewriteM3U8Content(content, baseUrl, proxyBaseUrl);
-          console.log("Prime Proxy: Successfully processed M3U8 content after redirect");
-          res.send(rewrittenContent);
-        } else {
-          res.send(redirectResponse.data);
-        }
-        return;
-      }
-    }
 
     const contentType = response.headers['content-type'] || '';
     
     res.set({
       'Content-Type': contentType,
-      'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache',
       'Expires': '0'
@@ -298,7 +220,19 @@ export const primeProxy = async (req: Request, res: Response) => {
     });
 
     // Set CORS headers even on error
-    res.header('Access-Control-Allow-Origin', '*');
+    const origin = req.headers.origin;
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'https://cinemaos.live',
+      'https://cinemaos-v3.vercel.app'
+    ];
+
+    if (origin && allowedOrigins.includes(origin)) {
+      res.header('Access-Control-Allow-Origin', origin);
+    } else {
+      res.header('Access-Control-Allow-Origin', '*');
+    }
+
     res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Referer, User-Agent, Range');
     res.header('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range, Content-Type');
