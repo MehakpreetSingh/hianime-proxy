@@ -127,8 +127,6 @@ export const primeProxy = async (req: Request, res: Response) => {
         responseType: 'stream',
         headers: requestHeaders,
         maxRedirects: 5,
-        timeout: 30000,
-        validateStatus: status => status < 400
       });
 
       const streamingHeaders: any = {
@@ -180,8 +178,6 @@ export const primeProxy = async (req: Request, res: Response) => {
       headers: headers,
       responseType: 'text',
       timeout: 30000,
-      maxRedirects: 5,
-      validateStatus: status => status < 400
     });
 
     const contentType = response.headers['content-type'] || '';
