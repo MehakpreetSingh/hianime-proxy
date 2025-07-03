@@ -98,8 +98,8 @@ export const primeProxy = async (req: Request, res: Response) => {
         'Sec-Fetch-Dest': 'video',
         'Sec-Fetch-Mode': 'cors',
         'Sec-Fetch-Site': 'cross-site',
-        'Referer': 'https://pstream.org/',
-        'Origin': 'https://pstream.org',
+        'Referer': 'https://xprime.tv',
+        'Origin': 'https://xprime.tv',
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
       };
 
