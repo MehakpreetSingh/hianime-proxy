@@ -13,6 +13,7 @@ export function encodePayload(payload: { url: string; ismp4?: boolean }): string
   // Return iv + encrypted, both base64
   return iv.toString("base64") + ":" + encrypted;
 }
+
 export function decodePayload(token: string): { url: string; ismp4?: boolean } {
   const [ivBase64, encrypted] = token.split(":");
   const iv = Buffer.from(ivBase64, "base64");
@@ -84,6 +85,9 @@ export const primeProxy = async (req: Request, res: Response) => {
     // Always decode the payload
     const { url: targetUrl, ismp4 } = decodePayload(decodeURIComponent(encodedToken));
 
+    console.log("Prime Proxy: Processing URL:", targetUrl);
+    console.log("Prime Proxy: Is MP4:", ismp4);
+
     if (ismp4) {
       // --- MP4 Streaming Logic ---
       const requestHeaders: any = {
@@ -111,7 +115,7 @@ export const primeProxy = async (req: Request, res: Response) => {
         responseType: 'stream',
         headers: requestHeaders,
         maxRedirects: 5,
-        timeout: 5000,
+        timeout: 30000, // Increased timeout
         validateStatus: status => status < 400
       });
 
@@ -147,6 +151,16 @@ export const primeProxy = async (req: Request, res: Response) => {
 
     // --- M3U8 Proxy Logic ---
     const headers = {
+      'Accept': '*/*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+      'Sec-Ch-Ua': '"Google Chrome";v="123", "Chromium";v="123", "Not?A_Brand";v="24"',
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': '"macOS"',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'cross-site',
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
       'Referer': 'https://xprime.tv/',
       'Origin': 'https://xprime.tv'
@@ -154,14 +168,19 @@ export const primeProxy = async (req: Request, res: Response) => {
 
     const response = await axios.get(targetUrl, {
       headers: headers,
-      responseType: 'arraybuffer'
+      responseType: 'arraybuffer',
+      timeout: 30000, // Increased timeout
+      maxRedirects: 5
     });
 
     const contentType = response.headers['content-type'] || '';
+    
+    // Set CORS headers again after the response
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Referer, User-Agent, Range');
     res.header('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range, Content-Type');
+    
     res.set({
       'Content-Type': contentType,
       'Access-Control-Allow-Origin': '*',
@@ -182,8 +201,10 @@ export const primeProxy = async (req: Request, res: Response) => {
 
       // All links in the playlist are now AES-encrypted
       const rewrittenContent = rewriteM3U8Content(content, baseUrl, proxyBaseUrl);
+      console.log("Prime Proxy: Successfully processed M3U8 content");
       res.send(rewrittenContent);
     } else {
+      console.log("Prime Proxy: Returning raw content, Content-Type:", contentType);
       res.send(response.data);
     }
   } catch (error: any) {
@@ -194,6 +215,12 @@ export const primeProxy = async (req: Request, res: Response) => {
       headers: error.response?.headers,
       url: req.query.url
     });
+
+    // Set CORS headers even on error
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Referer, User-Agent, Range');
+    res.header('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range, Content-Type');
 
     res.status(error.response?.status || 500).send(
       `Error: ${error.message}. Status: ${error.response?.status || 'unknown'}`
