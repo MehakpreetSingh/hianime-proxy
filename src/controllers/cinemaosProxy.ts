@@ -126,7 +126,11 @@ export const cinemaosProxy = async (req: Request, res: Response) => {
             headers['Content-Type'] = 'image/png';
         }
 
-        res.set(headers);
+        res.set({
+            'Content-Type': 'application/vnd.apple.mpegurl',
+            'Cache-Control': 'no-cache',
+            'Access-Control-Allow-Origin': '*'
+        });
 
         if (isStaticFiles) {
             console.log(`CinemaOS: Piping static file: ${url.split('/').pop()}`);
