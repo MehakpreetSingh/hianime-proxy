@@ -16,6 +16,7 @@ import { superProxy } from '../controllers/superProxy';
 import { superTransform } from '../controllers/superTransform';
 import { primeProxy } from '../controllers/primeProxy';
 import { mp4Proxy } from '../controllers/mp4Proxy';
+import { maxflixProxy } from '../controllers/maxflixProxy';
 
 export const router = express.Router();
 
@@ -61,3 +62,5 @@ router.get('/prime-proxy', (req, res, next) => {
 router.get('/mp4-proxy', (req, res, next) => {
   Promise.resolve(mp4Proxy(req, res)).catch(next);
 });
+
+router.get("/maxflix-proxy", maxflixProxy);
