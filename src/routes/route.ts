@@ -18,6 +18,9 @@ import { primeProxy } from '../controllers/primeProxy';
 import { mp4Proxy } from '../controllers/mp4Proxy';
 import { maxflixProxy } from '../controllers/maxflixProxy';
 
+import { corsM3u8Proxy, corsTsProxy } from '../controllers/cors-m3u8-proxy';
+;
+
 export const router = express.Router();
 
 router.get('/m3u8-proxy', m3u8Proxy);
@@ -39,6 +42,12 @@ router.get('/tom-proxy',  (req, res, next) => {
   Promise.resolve(tomProxy(req, res)).catch(next);
 });
 
+router.get('/cors-m3u8-proxy', (req, res, next) => {
+  Promise.resolve(corsM3u8Proxy(req, res)).catch(next);
+});
+router.get('/cors-ts-proxy', (req, res, next) => {
+  Promise.resolve(corsTsProxy(req, res)).catch(next);
+})
 router.get('/animetsu-proxy-m3u8', (req, res, next) => {
   Promise.resolve(animetsuM3u8Proxy(req, res)).catch(next);
 });
