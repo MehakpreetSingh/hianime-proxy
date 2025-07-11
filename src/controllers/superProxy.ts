@@ -82,22 +82,6 @@ export const superProxy = async (req: Request, res: Response) => {
                     if (uriMatch && uriMatch[1]) {
                         let audioUri = uriMatch[1];
 
-                        // Check if the URI is a base64-encoded JSON payload
-                        try {
-                            // Remove .m3u8 extension if present and try to decode as base64
-                            const base64Part = audioUri.replace(/\.m3u8$/, '');
-                            if (/^[A-Za-z0-9+/=]+$/.test(base64Part) && base64Part.length % 4 === 0) {
-                                const decodedString = Buffer.from(base64Part, 'base64').toString('utf-8');
-                                const parsed = JSON.parse(decodedString);
-                                if (parsed.u) {
-                                    // Use the actual URL from the decoded payload
-                                    audioUri = parsed.u;
-                                }
-                            }
-                        } catch (e) {
-                            // If decoding fails, treat as regular URI
-                        }
-
                         // Convert to full URL if needed
                         const fullUrl = constructFullUrl(url, audioUri);
                         const proxyUrl = `/super-proxy?url=${encodeURIComponent(fullUrl)}&referer=${encodeURIComponent(referer)}`;
