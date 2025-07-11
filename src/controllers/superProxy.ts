@@ -16,7 +16,7 @@ export const superProxy = async (req: Request, res: Response) => {
     try {
         const url = req.query.url as string;
         const referer = req.query.referer as string || 'https://hexa.watch/';
-        
+
         if (!url) return res.status(400).json("url is required");
 
         console.log("Super Proxy M3U8: Processing URL:", url);
@@ -46,73 +46,116 @@ export const superProxy = async (req: Request, res: Response) => {
         });
 
         let m3u8Content = response.data;
-        
+
         // Helper function to construct full URL based on the input URL
         const constructFullUrl = (inputUrl: string, relativePath: string): string => {
             if (relativePath.startsWith('http')) {
                 return relativePath; // Already a full URL
             }
-            
+
             // Extract the base URL from the input URL dynamically
             const urlObj = new URL(inputUrl);
             const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
-            
+
             // Get the directory path from the original URL
             const pathDir = urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf('/') + 1);
-            
+
             // Handle absolute paths (starting with /)
             if (relativePath.startsWith('/')) {
                 return `${baseUrl}${relativePath}`;
             }
-            
+
             // Handle relative paths
             return `${baseUrl}${pathDir}${relativePath}`;
         };
-        
+
         // Check if this is a master playlist (contains #EXT-X-STREAM-INF)
-        if (m3u8Content.includes('#EXT-X-STREAM-INF')) {
+        if (m3u8Content.includes('#EXT-X-STREAM-INF') || m3u8Content.includes('#EXT-X-MEDIA:TYPE=AUDIO')) {
             console.log("Super Proxy M3U8: Processing master playlist");
-            
+
             // Parse and modify master playlist
             const lines = m3u8Content.split('\n');
             const modifiedLines = lines.map((line: string) => {
-                // Skip empty lines and comments
+                // Handle EXT-X-MEDIA lines with URI attribute (for audio/subtitle tracks)
+                if (line.startsWith('#EXT-X-MEDIA:') && line.includes('URI=')) {
+                    const uriMatch = line.match(/URI="([^"]+)"/);
+                    if (uriMatch && uriMatch[1]) {
+                        let audioUri = uriMatch[1];
+
+                        // Check if the URI is a base64-encoded JSON payload
+                        try {
+                            // Remove .m3u8 extension if present and try to decode as base64
+                            const base64Part = audioUri.replace(/\.m3u8$/, '');
+                            if (/^[A-Za-z0-9+/=]+$/.test(base64Part) && base64Part.length % 4 === 0) {
+                                const decodedString = Buffer.from(base64Part, 'base64').toString('utf-8');
+                                const parsed = JSON.parse(decodedString);
+                                if (parsed.u) {
+                                    // Use the actual URL from the decoded payload
+                                    audioUri = parsed.u;
+                                }
+                            }
+                        } catch (e) {
+                            // If decoding fails, treat as regular URI
+                        }
+
+                        // Convert to full URL if needed
+                        const fullUrl = constructFullUrl(url, audioUri);
+                        const proxyUrl = `/super-proxy?url=${encodeURIComponent(fullUrl)}&referer=${encodeURIComponent(referer)}`;
+
+                        return line.replace(uriMatch[0], `URI="${proxyUrl}"`);
+                    }
+                    return line;
+                }
+
+                // Skip empty lines and comments (except EXT-X-MEDIA which we handled above)
                 if (line.trim() === '' || line.startsWith('#')) {
                     return line;
                 }
-                
+
                 // This is a playlist URL - convert to our proxy
                 if (line.trim() && !line.startsWith('#')) {
                     const fullUrl = constructFullUrl(url, line.trim());
                     return `/super-proxy?url=${encodeURIComponent(fullUrl)}&referer=${encodeURIComponent(referer)}`;
                 }
-                
+
                 return line;
             });
-            
+
             m3u8Content = modifiedLines.join('\n');
-        } 
+        }
         // This is a media playlist (contains #EXTINF)
         else if (m3u8Content.includes('#EXTINF')) {
             console.log("Super Proxy M3U8: Processing media playlist");
-            
+
             // Parse and modify media playlist
             const lines = m3u8Content.split('\n');
             const modifiedLines = lines.map((line: string) => {
+                // Handle EXT-X-KEY lines for encryption keys
+                if (line.startsWith('#EXT-X-KEY:') && line.includes('URI=')) {
+                    const uriMatch = line.match(/URI="([^"]+)"/);
+                    if (uriMatch && uriMatch[1]) {
+                        const keyUri = uriMatch[1];
+                        const fullUrl = constructFullUrl(url, keyUri);
+                        const proxyUrl = `/super-transform?url=${encodeURIComponent(fullUrl)}&referer=${encodeURIComponent(referer)}`;
+                        return line.replace(uriMatch[0], `URI="${proxyUrl}"`);
+                    }
+                    return line;
+                }
+
                 // Skip empty lines and comments
                 if (line.trim() === '' || line.startsWith('#')) {
                     return line;
                 }
-                
+
                 // This is a segment URL - convert to our transform proxy
                 if (line.trim() && !line.startsWith('#')) {
                     const fullUrl = constructFullUrl(url, line.trim());
                     return `/super-transform?url=${encodeURIComponent(fullUrl)}&referer=${encodeURIComponent(referer)}`;
                 }
-                
+
                 return line;
             });
-            
+
             m3u8Content = modifiedLines.join('\n');
         }
 
